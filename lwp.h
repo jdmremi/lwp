@@ -73,7 +73,7 @@ typedef struct context_st {
 void restore_stack_context(lwp_context *lwp);
 extern int round_robin_scheduling(void); /* forward declaration for default scheduling function */
 static lwp_context *schedule_next(void);
-static int scheduler_index;
+static int scheduler_index = -1;
 
 /***
  * DO NOT MODIFY ANYTHING BELOW
