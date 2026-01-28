@@ -95,6 +95,8 @@ void lwp_exit() {
 
     // decrement number of lwps
     --lwp_procs;
+    // decrement scheduler index - without doing this, shifting the table causes some threads to be skipped.
+    --scheduled_index;
 
     // if no threads remain (after exiting), restore current stack pointer and return to that context.
     if (lwp_procs == 0) {
@@ -147,10 +149,9 @@ void lwp_stop() {
 // Called by the user program. Causes the LWP library to use sched to choose the next LWP to run.
 // sched must return an integer in the range [0... lwp_procs - 1]
 int round_robin_scheduling(void) {
-    static int scheduled_pid = -1;
-    if (scheduled_pid + 1 >= lwp_procs)
-        scheduled_pid = -1;
-    return ++scheduled_pid;
+    if (scheduled_index + 1 >= lwp_procs)
+        scheduled_index = -1;
+    return ++scheduled_index;
 }
 
 void lwp_set_scheduler(schedfun sched) {
@@ -158,13 +159,4 @@ void lwp_set_scheduler(schedfun sched) {
         schedule_lwp = round_robin_scheduling;
     else
         schedule_lwp = sched;
-}
-
-static int get_lwp_context_index(int pid) {
-    for (int i = 0; i < lwp_procs; ++i) {
-        if (lwp_ptable[i].pid == pid)
-            return i;
-    }
-    // shouldn't be possible
-    return -1;
 }
