@@ -34,12 +34,7 @@ int new_lwp(lwpfun func, void *arg, size_t size) {
     *(--sp)                  = (ptr_int_t)DUMMY_EBP; // dummy ebp
     ptr_int_t *dummy_ebp_ptr = sp;                   // ptr to dummy ebp
 
-    *--sp = (ptr_int_t)0;             // eax
-    *--sp = (ptr_int_t)0;             // ebx
-    *--sp = (ptr_int_t)0;             // ecx
-    *--sp = (ptr_int_t)0;             // edx
-    *--sp = (ptr_int_t)0;             // esi
-    *--sp = (ptr_int_t)0;             // edi
+    memset(--sp, 0, 6);
     *--sp = (ptr_int_t)dummy_ebp_ptr; // address of dummy ebp
 
     ++lwp_pid_counter;
