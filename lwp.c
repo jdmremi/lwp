@@ -6,19 +6,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-static schedfun schedule_lwp           = round_robin_scheduling; /* default scheduling function is round robin scheduling */
-static ptr_int_t *main_thread_sp       = NULL;                   /* the main thread stack pointer */
-static lwp_context *lwp_current        = NULL;                   /* currently running lwp */
-static int scheduler_index             = -1;                     /* used for scheduling the next lwp */
-lwp_context lwp_ptable[LWP_PROC_LIMIT] = {};                     /* the process table */
-int lwp_procs                          = 0;                      /* the current number of LWPs */
+static schedfun schedule_lwp                       = round_robin_scheduling; /* default scheduling function is round robin scheduling */
+static ptr_int_t *main_thread_sp                   = NULL;                   /* the main thread stack pointer */
+static lwp_context *lwp_current                    = NULL;                   /* currently running lwp */
+static int scheduler_index                         = -1;                     /* used for scheduling the next lwp */
+static ptr_int_t *allocated_stacks[LWP_PROC_LIMIT] = {};                     /* keep track of each original stack pointer; used for freeing */
+lwp_context lwp_ptable[LWP_PROC_LIMIT]             = {};                     /* the process table */
+int lwp_procs                                      = 0;                      /* the current number of LWPs */
 
 // Called by the user program.
 int new_lwp(lwpfun func, void *arg, size_t size) {
     if (lwp_current || lwp_procs >= LWP_PROC_LIMIT)
         return -1;
 
-    static int lwp_pid_counter = -1; /* pid counter starts at -1 */
+    static int lwp_pid_counter = -1;                                 /* pid counter starts at -1 */
+    memset(allocated_stacks, 0, sizeof(ptr_int_t) * LWP_PROC_LIMIT); /* set allocated stack pointers to all be NULL. */
 
     /* stack initialiation */
     size_t stack_size             = size * WORD_SIZE;                // number of words to allocate for
@@ -40,7 +42,9 @@ int new_lwp(lwpfun func, void *arg, size_t size) {
         .stacksize = stack_size,
         .index     = lwp_procs};
 
-    lwp_ptable[lwp_procs++] = context;
+    allocated_stacks[lwp_procs] = original_stack_ptr;
+    lwp_ptable[lwp_procs]       = context;
+    ++lwp_procs;
 
     return context.pid;
 }
@@ -86,11 +90,17 @@ void lwp_exit() {
     // if no threads remain (after exiting), restore current stack pointer and return to that context.
     if (!lwp_procs) {
         lwp_current = NULL;
-        // Todo: Cleanup
         SetSP(main_thread_sp);
         RESTORE_STATE();
     } else {
         lwp_current = schedule_next();
+
+        int i = 0;
+        while (allocated_stacks[i] != NULL) {
+            free(allocated_stacks[i]);
+            ++i;
+        }
+
         SetSP(lwp_current->sp);
         RESTORE_STATE();
     }
@@ -119,8 +129,8 @@ void lwp_stop() {
     if (!lwp_current)
         return;
     // 1. save current lwp's context
-    GetSP(lwp_current->sp);
     SAVE_STATE();
+    GetSP(lwp_current->sp);
     // 2. restore the original stack pointer and return to that context.
     lwp_current = NULL;
     // necessary, since a call to start() will call the scheduler which will increment this value, skipping some threads :(
@@ -131,6 +141,7 @@ void lwp_stop() {
 
 // Called by the user program. sched must return an integer in the range [0... lwp_procs - 1]
 int round_robin_scheduling(void) {
+    // alternative: (lwp_running + 1) % lwp_procs
     if (scheduler_index + 1 >= lwp_procs || scheduler_index < -1)
         scheduler_index = -1;
     return ++scheduler_index;
